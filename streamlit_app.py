@@ -1,28 +1,27 @@
 import streamlit as st
 import os
 
-# --- 1. SELF-HEALING IMPORTS ---
+# --- 1. SYSTEM-DRIVEN IMPORTS ---
 try:
     from PyPDF2 import PdfReader
     from langchain_text_splitters import RecursiveCharacterTextSplitter
     from langchain_community.vectorstores import FAISS
     from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+    
+    # UPDATED LINE BELOW:
     from langchain.chains.question_answering import load_qa_chain
+    
     from langchain.prompts import PromptTemplate
 except ImportError as e:
-    st.error(f"⚠️ **Deployment Header Error:** {e}")
-    st.info("Streamlit is still installing libraries from requirements.txt. Please wait 2-3 minutes and refresh.")
-    st.stop()
+    # If the standard import fails, try the alternative modern path
+    try:
+        from langchain.chains.question_answering import load_qa_chain
+    except:
+        st.error(f"⚠️ Deployment Error: {e}")
+        st.stop()
 
 # --- 2. APP CONFIGURATION ---
 st.set_page_config(page_title="Med-Synth AI", page_icon="🧬", layout="wide")
-
-st.markdown("""
-    <style>
-    .stApp { background-color: #f8f9fa; }
-    .stButton>button { background-color: #1B4F72; color: white; border-radius: 8px; width: 100%; }
-    </style>
-    """, unsafe_allow_html=True)
 
 st.title("🧬 Medical Literature Synthesizer")
 st.caption("Developed by Juliet Sera Othieno, MBBS Candidate")
@@ -37,7 +36,9 @@ with st.sidebar:
     if st.button("Analyze Literature"):
         if api_key and pdf_docs:
             with st.spinner("Analyzing papers..."):
+                # Clean key/env
                 os.environ["GOOGLE_API_KEY"] = api_key
+                
                 text = ""
                 for pdf in pdf_docs:
                     reader = PdfReader(pdf)
@@ -47,6 +48,7 @@ with st.sidebar:
                 splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
                 chunks = splitter.split_text(text)
                 
+                # Using the core embeddings
                 embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
                 vector_store = FAISS.from_texts(chunks, embeddings)
                 st.session_state.vector_store = vector_store
@@ -60,12 +62,14 @@ user_query = st.text_input("Enter your clinical research question:")
 if user_query and "vector_store" in st.session_state:
     docs = st.session_state.vector_store.similarity_search(user_query)
     
+    # Using a simple prompt to avoid complexity
     prompt = PromptTemplate(
         template="Synthesize an answer using the context: {context}\nQuestion: {question}",
         input_variables=["context", "question"]
     )
     
-    model = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0.2)
+    # Use Gemini-1.5-Flash (it's faster and usually stays free)
+    model = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.2)
     chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
     
     response = chain({"input_documents": docs, "question": user_query}, return_only_outputs=True)
