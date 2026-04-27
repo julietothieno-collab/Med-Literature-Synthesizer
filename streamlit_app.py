@@ -1,13 +1,13 @@
 import streamlit as st
 import os
 
-# --- 1. MODERN LANGCHAIN 1.0+ IMPORTS ---
+# --- 1. ROBUST IMPORTS ---
 try:
     from PyPDF2 import PdfReader
     from langchain_text_splitters import RecursiveCharacterTextSplitter
     from langchain_community.vectorstores import FAISS
-    from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-    from langchain_core.prompts import PromptTemplate
+    from langchain_community.embeddings import HuggingFaceEmbeddings # Switched for reliability
+    from langchain_google_genai import ChatGoogleGenerativeAI
     from langchain_core.messages import HumanMessage
 except ImportError as e:
     st.error(f"⚠️ Library Error: {e}")
@@ -21,49 +21,46 @@ st.markdown("""
     .stApp { background-color: #FFFFFF; }
     .stButton>button { 
         background-color: #1B4F72; 
-        color: white; 
-        border-radius: 20px; 
-        border: none;
-        padding: 10px 20px;
+        color: white; border-radius: 20px; width: 100%; font-weight: bold; 
     }
-    .stTextInput>div>div>input {
-        border: 2px solid #1B4F72;
-    }
-    h1 { color: #1B4F72; font-family: 'Helvetica Neue', sans-serif; }
+    h1 { color: #1B4F72; }
     </style>
     """, unsafe_allow_html=True)
 
 st.title("🧬 Medical Literature Synthesizer")
-st.caption("Developed by Juliet Sera Othieno, MBBS Candidate | AI-Powered Research Assistant")
-st.markdown("---")
+st.caption("Developed by Juliet Sera Othieno, MBBS Candidate")
 
 # --- 3. SIDEBAR LOGIC ---
 with st.sidebar:
-    st.header("Upload & Setup")
-    api_key = st.text_input("Google Gemini API Key", type="password", help="Get a free key at aistudio.google.com")
+    st.header("Setup")
+    api_key = st.text_input("Google Gemini API Key", type="password")
     pdf_docs = st.file_uploader("Upload Medical PDFs", accept_multiple_files=True)
     
     if st.button("Process Literature"):
         if api_key and pdf_docs:
-            with st.spinner("Processing medical PDFs..."):
-                os.environ["GOOGLE_API_KEY"] = api_key
+            with st.spinner("Analyzing papers (this may take a minute)..."):
+                # 1. Extract Text
                 text = ""
                 for pdf in pdf_docs:
                     reader = PdfReader(pdf)
                     for page in reader.pages:
                         extracted = page.extract_text()
-                        if extracted:
-                            text += extracted
+                        if extracted: text += extracted
                 
-                splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
+                # 2. Chunk text
+                splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
                 chunks = splitter.split_text(text)
                 
-                embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+                # 3. Create Vector Store using FREE HuggingFace Embeddings
+                # This bypasses the Google GenerativeAIError
+                embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
                 vector_store = FAISS.from_texts(chunks, embeddings)
+                
                 st.session_state.vector_store = vector_store
+                st.session_state.api_key = api_key
                 st.success("Analysis Complete!")
         else:
-            st.warning("Please enter your API Key and upload at least one PDF.")
+            st.warning("Please enter your API Key and upload PDFs.")
 
 # --- 4. MAIN INTERFACE ---
 user_query = st.text_input("Ask a research question across the uploaded papers:")
@@ -73,13 +70,13 @@ if user_query:
         st.info("Please upload and process your PDFs in the sidebar first.")
     else:
         with st.spinner("Synthesizing evidence..."):
-            os.environ["GOOGLE_API_KEY"] = api_key
+            os.environ["GOOGLE_API_KEY"] = st.session_state.api_key
             
             # Retrieve relevant chunks
-            docs = st.session_state.vector_store.similarity_search(user_query, k=5)
+            docs = st.session_state.vector_store.similarity_search(user_query, k=4)
             context_text = "\n\n".join([doc.page_content for doc in docs])
             
-            # Modern LLM Call (Bypassing the crashing 'chains' module)
+            # Use Gemini to answer
             llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.2)
             
             clinical_prompt = f"""
@@ -96,6 +93,5 @@ if user_query:
             """
             
             response = llm.invoke([HumanMessage(content=clinical_prompt)])
-            
             st.markdown("### 📊 Evidence Synthesis Report")
             st.write(response.content)
