@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import time
 
 # --- 1. ROBUST IMPORTS ---
 try:
@@ -12,53 +13,53 @@ except ImportError as e:
     st.error(f"Library Error: {e}")
     st.stop()
 
-# --- 2. DARK PREMIUM MEDICAL UI ---
+# --- 2. CLEAN WHITE MEDICAL UI (FIXED FONTS) ---
 st.set_page_config(page_title="Med-Synth AI", page_icon="🧬", layout="wide")
 
 st.markdown("""
     <style>
-    /* Dark Theme background */
-    .stApp { background-color: #0E1117; color: #FFFFFF; }
+    /* White Background */
+    .stApp { background-color: #FFFFFF; }
     
-    /* White text for all standard elements */
-    p, li, label, span, .stMarkdown { color: #FFFFFF !important; font-size: 1.1rem !important; }
+    /* Pure Black Text for Readability */
+    p, li, label, span, .stMarkdown { color: #000000 !important; font-size: 1.1rem !important; }
     
-    /* Blue Glow Headlines */
-    h1, h2, h3 { color: #5DADE2 !important; font-weight: 800 !important; text-shadow: 2px 2px 4px #000000; }
+    /* Professional Navy Headlines */
+    h1, h2, h3 { color: #1B4F72 !important; font-weight: 800 !important; }
     
-    /* Sidebar styling */
-    section[data-testid="stSidebar"] { background-color: #1B2631 !important; border-right: 1px solid #5DADE2; }
+    /* Sidebar Styling */
+    section[data-testid="stSidebar"] { background-color: #F8F9F9 !important; border-right: 1px solid #1B4F72; }
     
-    /* Input Box Styling */
+    /* INPUT BOX FIX: White text on dark background OR Black text on light background */
     .stTextInput>div>div>input { 
-        border: 1px solid #5DADE2 !important; 
-        color: #FFFFFF !important; 
-        background-color: #2C3E50 !important; 
+        color: #FFFFFF !important;  /* text color inside the box */
+        background-color: #1B4F72 !important; /* navy blue box */
+        border: 2px solid #1B4F72 !important;
     }
+    
+    /* Make the placeholder text white-ish so you can see it */
+    input::placeholder { color: #D5DBDB !important; opacity: 1; }
 
-    /* Professional Button */
+    /* Button Styling */
     .stButton>button { 
-        background-color: #5DADE2 !important; 
-        color: #0E1117 !important; 
+        background-color: #1B4F72 !important; 
+        color: white !important; 
         border-radius: 10px !important; 
         font-weight: bold !important; 
         width: 100%;
-        transition: 0.3s;
     }
-    .stButton>button:hover { background-color: #AED6F1 !important; transform: scale(1.02); }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. SIDEBAR (SETUP) ---
+# --- 3. SIDEBAR ---
 with st.sidebar:
-    st.title("🧰 Control Panel")
-    st.markdown("---")
-    api_key = st.text_input("Gemini API Key", type="password")
+    st.title("🧰 Tools")
+    api_key = st.text_input("Enter Gemini API Key", type="password")
     pdf_docs = st.file_uploader("Upload Medical PDFs", accept_multiple_files=True)
     
-    if st.button("PROCESS DOCUMENTS"):
+    if st.button("PROCESS LITERATURE"):
         if api_key and pdf_docs:
-            with st.spinner("⏳ Analyzing Literature..."):
+            with st.spinner("⏳ Analyzing PDFs..."):
                 text = ""
                 for pdf in pdf_docs:
                     reader = PdfReader(pdf)
@@ -66,71 +67,51 @@ with st.sidebar:
                         extracted = page.extract_text()
                         if extracted: text += extracted
                 
-                splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=200)
+                splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
                 chunks = splitter.split_text(text)
                 
-                # Local safe embeddings
+                # Using local embeddings for stability
                 embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
                 vector_store = FAISS.from_texts(chunks, embeddings)
                 
                 st.session_state.vector_store = vector_store
                 st.session_state.api_key = api_key
-                st.success("✅ Analysis Complete!")
+                st.success("✅ Ready!")
         else:
-            st.warning("⚠️ Missing API Key or PDFs")
+            st.warning("⚠️ Enter Key and PDFs.")
 
 # --- 4. MAIN INTERFACE ---
 st.title("🧬 Medical Literature Synthesizer")
-st.markdown(f"**Research Lead:** Juliet Sera Othieno, Year 4 MBBS Candidate")
+st.markdown(f"**Research Lead:** Juliet Sera Othieno, MBBS Candidate")
 st.markdown("---")
 
 if "vector_store" not in st.session_state:
-    st.info("👈 **Welcome Doctor.** Please upload your study materials in the sidebar to begin.")
+    st.info("👈 Please setup via the sidebar to begin clinical synthesis.")
 else:
-    st.markdown("### 📝 Enter Research Query")
-    user_query = st.text_input("", placeholder="e.g. Discuss the statistical significance of outcomes across these trials...")
+    st.markdown("### 📝 Enter Your Question")
+    user_query = st.text_input("", placeholder="Wait 30s between questions to avoid rate limits...")
 
     if user_query:
-        with st.spinner("🔬 AI Synthesizing evidence..."):
+        with st.spinner("🔬 Synthesizing..."):
             genai.configure(api_key=st.session_state.api_key)
             
             # Retrieve Evidence
             docs = st.session_state.vector_store.similarity_search(user_query, k=5)
             context_text = "\n\n".join([doc.page_content for doc in docs])
             
-            # --- MODEL AUTO-DETECTION LOGIC ---
-            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            # Try to pick Gemini 1.5 Flash first, then 1.5 Pro, then fallback to whatever is available
-            if 'models/gemini-1.5-flash' in available_models:
-                target_model = 'gemini-1.5-flash'
-            elif 'models/gemini-1.5-pro' in available_models:
-                target_model = 'gemini-1.5-pro'
-            else:
-                target_model = available_models[0].split('/')[-1] # Automated selection
-
-            model = genai.GenerativeModel(target_model)
+            # Use the newer model version
+            model = genai.GenerativeModel('gemini-1.5-flash')
             
-            prompt = f"""
-            You are a Professional Medical Data Analyst. 
-            Answer the clinical question based ONLY on the evidence provided.
-            
-            CONTEXT:
-            {context_text}
-            
-            QUESTION:
-            {user_query}
-            
-            Format the response with headers and bullet points. 
-            If conflicting data exists between papers, highlight it clearly.
-            """
+            prompt = f"System: Senior Medical Researcher. Answer based ONLY on context:\n\nCONTEXT:\n{context_text}\n\nQUESTION:\n{user_query}"
             
             try:
                 response = model.generate_content(prompt)
-                st.markdown(f"**Using Model:** `{target_model}`")
                 st.markdown("---")
                 st.markdown("### 📊 Evidence Synthesis Report")
                 st.write(response.text)
-                st.balloons() # Visual celebration for success!
+                st.balloons()
             except Exception as e:
-                st.error(f"Synthesis failed using {target_model}")
-                st.info(f"Details: {str(e)}")
+                if "429" in str(e):
+                    st.error("⚠️ **API Rate Limit Reached.** Google's free tier only allows 15 questions per minute. Please wait 30 seconds and try again!")
+                else:
+                    st.error(f"Error: {str(e)}")
