@@ -79,7 +79,7 @@ else:
             context_text = "\n\n".join([doc.page_content for doc in docs])
             
             # Use a robust direct call to Gemini Pro
-            model = genai.GenerativeModel('gemini-pro')
+            model = genai.GenerativeModel('gemini-1.5-flash')
             
             prompt = f"""
             You are a Senior Medical Researcher. Synthesize a professional response based ONLY on the evidence provided.
