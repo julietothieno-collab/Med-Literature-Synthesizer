@@ -18,8 +18,18 @@ st.set_page_config(page_title="Med-Synth AI", page_icon="🧬", layout="wide")
 
 st.markdown("""
     <style>
-    .stApp { background-color: #f8f9fa; }
-    .stButton>button { background-color: #1B4F72; color: white; border-radius: 8px; width: 100%; font-weight: bold; }
+    .stApp { background-color: #FFFFFF; }
+    .stButton>button { 
+        background-color: #1B4F72; 
+        color: white; 
+        border-radius: 20px; 
+        border: none;
+        padding: 10px 20px;
+    }
+    .stTextInput>div>div>input {
+        border: 2px solid #1B4F72;
+    }
+    h1 { color: #1B4F72; font-family: 'Helvetica Neue', sans-serif; }
     </style>
     """, unsafe_allow_html=True)
 
