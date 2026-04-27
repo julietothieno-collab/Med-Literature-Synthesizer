@@ -13,65 +13,54 @@ except ImportError as e:
     st.error(f"Library Error: {e}")
     st.stop()
 
-# --- 2. PREMIUM MEDICAL UI (BOLD & CLEAN) ---
+# --- 2. PREMIUM MEDICAL UI ---
 st.set_page_config(page_title="Med-Synth AI", page_icon="🧬", layout="wide")
 
 st.markdown("""
     <style>
-    /* Main Background */
     .stApp { background-color: #FFFFFF; }
     
-    /* Elegant Large Title */
     .main-title {
-        font-size: 55px !important;
+        font-size: 50px !important;
         font-weight: 800 !important;
         color: #1B4F72 !important;
         text-align: center;
-        margin-bottom: 0px;
-        font-family: 'Helvetica Neue', sans-serif;
+        margin-top: -20px;
     }
     
-    /* Subtitle */
     .sub-title {
-        font-size: 1.2rem !important;
+        font-size: 1.1rem !important;
         color: #5D6D7E !important;
         text-align: center;
         margin-bottom: 30px;
     }
 
-    /* Black Reading Text */
-    p, li, label, span, .stMarkdown { color: #000000 !important; font-size: 1.1rem !important; }
+    p, li, label, span, .stMarkdown { color: #000000 !important; font-size: 1.05rem !important; }
     
-    /* Sidebar Styling */
     section[data-testid="stSidebar"] { background-color: #F4F6F7 !important; border-right: 2px solid #1B4F72; }
     
-    /* Input Box: High Contrast */
+    /* Input Box: High Contrast White Font */
     .stTextInput>div>div>input { 
         color: #FFFFFF !important; 
         background-color: #1B4F72 !important; 
-        border-radius: 10px;
-        padding: 15px;
-        font-size: 1.2rem !important;
+        border-radius: 8px;
+        font-size: 1.1rem !important;
     }
     
-    /* Signature at the bottom */
+    /* Make signature small and clean */
     .signature {
-        position: fixed;
-        left: 0;
-        bottom: 10px;
-        width: 100%;
         text-align: center;
-        color: #AEB6BF;
-        font-size: 0.8rem;
-        font-style: italic;
+        color: #BDC3C7;
+        font-size: 0.75rem;
+        margin-top: 50px;
+        padding-bottom: 20px;
     }
 
     .stButton>button { 
         background-color: #1B4F72 !important; 
         color: white !important; 
-        border-radius: 10px !important; 
+        border-radius: 8px !important; 
         font-weight: bold !important; 
-        width: 100%;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -84,7 +73,7 @@ with st.sidebar:
     
     if st.button("PROCESS LITERATURE"):
         if api_key and pdf_docs:
-            with st.spinner("🔍 Reading PDFs..."):
+            with st.spinner("🔍 Reading Medical Data..."):
                 text = ""
                 for pdf in pdf_docs:
                     reader = PdfReader(pdf)
@@ -94,7 +83,6 @@ with st.sidebar:
                 
                 splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=150)
                 chunks = splitter.split_text(text)
-                
                 embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
                 vector_store = FAISS.from_texts(chunks, embeddings)
                 
@@ -102,47 +90,50 @@ with st.sidebar:
                 st.session_state.api_key = api_key
                 st.success("✅ Analysis Complete!")
         else:
-            st.warning("⚠️ Missing setup details.")
+            st.warning("⚠️ Enter details first.")
 
 # --- 4. MAIN INTERFACE ---
 st.markdown('<p class="main-title">🧬 Med-Synth AI</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-title">Advanced Medical Literature Synthesis & Data Extraction</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title">Synthesizing clinical evidence for professional research</p>', unsafe_allow_html=True)
 
 if "vector_store" not in st.session_state:
-    st.info("👈 Please enter your API key and upload your clinical papers in the sidebar to begin.")
+    st.info("👈 Welcome. Please configure the tool in the sidebar to begin.")
 else:
-    st.markdown("### 📝 Ask your Research Question")
-    user_query = st.text_input("", placeholder="e.g., Summarize the findings and mention the sample sizes...")
+    st.markdown("### 📝 Enter Research Question")
+    user_query = st.text_input("", placeholder="e.g. Summarize the clinical implications and primary outcomes...")
 
     if user_query:
-        with st.spinner("🔬 Synthesizing Evidence..."):
+        with st.spinner("🔬 AI is synthesizing..."):
             genai.configure(api_key=st.session_state.api_key)
-            
-            # Retrieve relevant text
             docs = st.session_state.vector_store.similarity_search(user_query, k=5)
             context_text = "\n\n".join([doc.page_content for doc in docs])
             
-            # --- THE 404 FIX: AUTO-SELECT THE CORRECT MODEL ---
+            # Smart Model Auto-Detection
             try:
-                # Find available models for your specific API key
                 models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                # Priority list
-                if 'models/gemini-1.5-flash-latest' in models: selection = 'gemini-1.5-flash-latest'
-                elif 'models/gemini-1.5-flash' in models: selection = 'gemini-1.5-flash'
-                elif 'models/gemini-pro' in models: selection = 'gemini-pro'
-                else: selection = models[0].replace('models/', '')
-
+                selection = 'gemini-1.5-flash' if 'models/gemini-1.5-flash' in models else models[0].replace('models/', '')
                 model = genai.GenerativeModel(selection)
                 
-                prompt = f"System: Medical Researcher. Context:\n{context_text}\n\nQuestion: {user_query}"
-                response = model.generate_content(prompt)
+                prompt = f"Role: Medical Analyst. Context:\n{context_text}\n\nQuestion: {user_query}. Respond with clear bullet points."
                 
-                st.markdown("---")
-                st.markdown("### 📊 Synthesis Report")
-                st.write(response.text)
-                st.balloons()
+                # RETRY LOGIC FOR QUOTA
+                max_retries = 3
+                for i in range(max_retries):
+                    try:
+                        response = model.generate_content(prompt)
+                        st.markdown("---")
+                        st.markdown("### 📊 Evidence Synthesis Report")
+                        st.write(response.text)
+                        st.balloons()
+                        break
+                    except Exception as e:
+                        if "429" in str(e) and i < max_retries - 1:
+                            st.warning(f"⏳ Rate limit hit. Retrying automatically in 15 seconds (Attempt {i+1}/3)...")
+                            time.sleep(15)
+                        else:
+                            raise e
             except Exception as e:
-                st.error(f"Generation failed. Error details: {str(e)}")
+                st.error("The API is busy. Please wait 1 minute and re-enter your question.")
 
 # --- 5. SIGNATURE ---
 st.markdown('<div class="signature">Developed by Juliet Sera Othieno, MBBS Candidate</div>', unsafe_allow_html=True)
